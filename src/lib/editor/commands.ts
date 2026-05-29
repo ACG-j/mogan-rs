@@ -2,6 +2,8 @@ import type { Editor, JSONContent } from "@tiptap/core";
 import { cycleLatexSymbol } from "../math/cycleRules";
 import { applyLegoRules } from "../math/legoRules";
 import { templateLatex, type MathTemplate } from "../math/latex";
+import { emptyMath, row, symbol, textMath, type MathNode } from "../math/ast";
+import { fallbackMathFromLatex, mathAttrsFromAst, mathNodeFromAttrs, type MathAttrs } from "../math/serialize";
 
 function selectedText(editor: Editor): string {
   const { state } = editor;
@@ -9,52 +11,88 @@ function selectedText(editor: Editor): string {
   return from === to ? "" : state.doc.textBetween(from, to, " ");
 }
 
+function selectedMath(editor: Editor): MathNode {
+  return textMath(selectedText(editor));
+}
+
+function insertInlineMathAst(editor: Editor, mathAst: MathNode): void {
+  insertMathNode(editor, "inlineMath", mathAttrsFromAst(mathAst));
+}
+
+function insertBlockMathAst(editor: Editor, mathAst: MathNode): void {
+  insertMathNode(editor, "blockMath", mathAttrsFromAst(mathAst));
+}
+
+function insertMathNode(editor: Editor, type: "inlineMath" | "blockMath", attrs: MathAttrs): void {
+  const nodeType = editor.schema.nodes[type];
+  if (!nodeType) return;
+
+  const { state } = editor;
+  const tr = state.tr.replaceSelectionWith(nodeType.create(attrs));
+  editor.view.dispatch(tr.scrollIntoView());
+  editor.view.focus();
+}
+
 export function insertInlineMath(editor: Editor, latex = "x"): void {
-  editor.chain().focus().insertInlineMath({ latex }).run();
+  insertInlineMathAst(editor, fallbackMathFromLatex(latex));
 }
 
 export function insertBlockMath(editor: Editor, latex = "x^2 + y^2 = z^2"): void {
-  editor.chain().focus().insertBlockMath({ latex }).run();
+  insertBlockMathAst(editor, fallbackMathFromLatex(latex));
 }
 
 export function insertMathTemplate(editor: Editor, template: MathTemplate): void {
   const selected = selectedText(editor).trim();
-  let latex = templateLatex(template);
+  const base = selected ? selectedMath(editor) : symbol("x");
+  let mathAst: MathNode = fallbackMathFromLatex(templateLatex(template));
 
-  if (selected) {
-    switch (template) {
-      case "fraction":
-        latex = `\\frac{${selected}}{}`;
-        break;
-      case "sqrt":
-        latex = `\\sqrt{${selected}}`;
-        break;
-      case "varSqrt":
-        latex = `\\sqrt[n]{${selected}}`;
-        break;
-      case "subscript":
-        latex = `${selected}_i`;
-        break;
-      case "superscript":
-        latex = `${selected}^2`;
-        break;
-      case "script":
-        latex = `${selected}_i^2`;
-        break;
-      case "neg":
-        latex = `\\neg ${selected}`;
-        break;
-      case "matrix":
-      case "cases":
-        break;
-    }
+  switch (template) {
+    case "fraction":
+      mathAst = { type: "frac", numerator: selected ? base : symbol("1"), denominator: selected ? emptyMath : symbol("2") };
+      break;
+    case "sqrt":
+      mathAst = { type: "sqrt", body: base };
+      break;
+    case "varSqrt":
+      mathAst = { type: "sqrt", index: symbol("n"), body: base };
+      break;
+    case "subscript":
+      mathAst = { type: "script", base, sub: symbol("i") };
+      break;
+    case "superscript":
+      mathAst = { type: "script", base, sup: symbol("2") };
+      break;
+    case "script":
+      mathAst = { type: "script", base, sub: symbol("i"), sup: symbol("2") };
+      break;
+    case "neg":
+      mathAst = { type: "neg", body: base };
+      break;
+    case "matrix":
+      mathAst = {
+        type: "matrix",
+        rows: [
+          [symbol("a"), symbol("b")],
+          [symbol("c"), symbol("d")],
+        ],
+      };
+      break;
+    case "cases":
+      mathAst = {
+        type: "cases",
+        rows: [
+          { body: symbol("x"), condition: row([symbol("x"), symbol(">"), symbol("0")]) },
+          { body: symbol("0"), condition: row([symbol("x"), symbol("\\le"), symbol("0")]) },
+        ],
+      };
+      break;
   }
 
-  insertInlineMath(editor, latex);
+  insertInlineMathAst(editor, mathAst);
 }
 
 export function insertLegoSymbol(editor: Editor, trigger: string): void {
-  insertInlineMath(editor, applyLegoRules(trigger));
+  insertInlineMathAst(editor, symbol(applyLegoRules(trigger)));
 }
 
 export function cycleSelectedMath(editor: Editor): boolean {
@@ -66,8 +104,16 @@ export function cycleSelectedMath(editor: Editor): boolean {
   }
 
   const pos = state.selection.$from.pos;
+  const mathAst = mathNodeFromAttrs(selectedNode.attrs);
+
+  if (mathAst?.type === "symbol") {
+    const cycled = symbol(cycleLatexSymbol(mathAst.value));
+    editor.view.dispatch(state.tr.setNodeMarkup(pos, undefined, mathAttrsFromAst(cycled)));
+    return true;
+  }
+
   const latex = cycleLatexSymbol(String(selectedNode.attrs.latex ?? ""));
-  const attrs = { ...selectedNode.attrs, latex };
+  const attrs = mathAttrsFromAst(symbol(latex));
 
   editor.view.dispatch(state.tr.setNodeMarkup(pos, undefined, attrs));
   return true;
@@ -86,8 +132,8 @@ export function cycleTextBeforeCursor(editor: Editor): boolean {
     .chain()
     .focus()
     .deleteRange({ from: from - 1, to: from })
-    .insertInlineMath({ latex })
     .run();
+  insertInlineMathAst(editor, symbol(latex));
   return true;
 }
 
@@ -104,20 +150,40 @@ export function makeInitialContent(): JSONContent {
         type: "paragraph",
         content: [
           { type: "text", text: "设 " },
-          { type: "inlineMath", attrs: { latex: "z=f(x,y)=x^y" } },
+          {
+            type: "inlineMath",
+            attrs: mathAttrsFromAst(row([symbol("z=f(x,y)="), { type: "script", base: symbol("x"), sup: symbol("y") }])),
+          },
           { type: "text", text: "，则" },
         ],
       },
       {
         type: "blockMath",
-        attrs: {
-          latex:
-            "dz=\\frac{\\partial z}{\\partial x}\\cdot dx+\\frac{\\partial z}{\\partial y}\\cdot dy=yx^{y-1}dx+x^y\\ln xdy",
-        },
+        attrs: mathAttrsFromAst(
+          row([
+            symbol("dz="),
+            {
+              type: "frac",
+              numerator: row([symbol("\\partial"), symbol("z")]),
+              denominator: row([symbol("\\partial"), symbol("x")]),
+            },
+            symbol("\\cdot"),
+            symbol("dx+"),
+            {
+              type: "frac",
+              numerator: row([symbol("\\partial"), symbol("z")]),
+              denominator: row([symbol("\\partial"), symbol("y")]),
+            },
+            symbol("\\cdot"),
+            symbol("dy=yx^{y-1}dx+x^y"),
+            symbol("\\ln"),
+            symbol("xdy"),
+          ]),
+        ),
       },
       {
         type: "blockMath",
-        attrs: { latex: "dz\\vert_{(e,2)}=2e dx+e^2dy" },
+        attrs: mathAttrsFromAst(row([symbol("dz\\vert_{(e,2)}=2e dx+e^2dy")])),
       },
     ],
   };

@@ -2,8 +2,8 @@
   import { onDestroy, onMount } from "svelte";
   import { Editor } from "@tiptap/core";
   import StarterKit from "@tiptap/starter-kit";
-  import { Mathematics } from "@tiptap/extension-mathematics";
   import "katex/dist/katex.min.css";
+  import { StructuredMathematics } from "./mathExtension";
   import {
     cycleTextBeforeCursor,
     cycleSelectedMath,
@@ -102,7 +102,7 @@
       element: editorContainer,
       extensions: [
         StarterKit,
-        Mathematics.configure({
+        StructuredMathematics.configure({
           katexOptions: {
             throwOnError: false,
             strict: false,

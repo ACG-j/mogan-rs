@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 import { escapeTypstText, latexToTypstMath } from "../math/latex";
+import { mathNodeFromAttrs, mathToTypst } from "../math/serialize";
 
 export function documentToTypst(doc: JSONContent): string {
   return serializeNodes(doc.content ?? []).trimEnd();
@@ -24,14 +25,20 @@ function serializeNode(node: JSONContent): string {
     case "listItem":
       return serializeNodes(node.content ?? []);
     case "inlineMath":
-      return `$ ${latexToTypstMath(String(node.attrs?.latex ?? ""))} $`;
+      return serializeMath(node);
     case "blockMath":
-      return `$ ${latexToTypstMath(String(node.attrs?.latex ?? ""))} $`;
+      return serializeMath(node);
     case "text":
       return escapeTypstText(node.text ?? "");
     default:
       return serializeInline(node.content ?? []);
   }
+}
+
+function serializeMath(node: JSONContent): string {
+  const mathAst = mathNodeFromAttrs(node.attrs);
+  const body = mathAst ? mathToTypst(mathAst) : latexToTypstMath(String(node.attrs?.latex ?? ""));
+  return `$ ${body} $`;
 }
 
 function serializeInline(nodes: JSONContent[]): string {
