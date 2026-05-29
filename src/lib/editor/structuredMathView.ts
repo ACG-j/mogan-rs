@@ -27,9 +27,12 @@ export function createStructuredMathView(options: StructuredMathViewOptions): HT
 
   const wrapper = document.createElement(options.displayMode ? "div" : "span");
   wrapper.className = options.displayMode ? "structured-math structured-math--block" : "structured-math structured-math--inline";
+  wrapper.tabIndex = -1;
   wrapper.dataset.type = options.displayMode ? "block-math" : "inline-math";
   wrapper.setAttribute("data-latex", mathToLatex(mathAst));
+  setRootAst(wrapper, mathAst);
   wrapper.appendChild(renderNode(mathAst, [], options));
+  wrapper.addEventListener("keydown", ((event: KeyboardEvent) => handleRootNavigation(event, wrapper)) as EventListener);
   requestAnimationFrame(() => layoutStructuredMath(wrapper));
 
   return wrapper;
@@ -111,9 +114,11 @@ function renderSlot(
 
     if (event.key === "Enter") {
       event.preventDefault();
-      element.blur();
+      commitRoot(element, options);
       return;
     }
+
+    if (handleSlotNavigation(event, element, path, options)) return;
 
     if (event.key === "Escape") {
       event.preventDefault();
@@ -126,16 +131,223 @@ function renderSlot(
     element.dataset.mathText = element.textContent ?? "";
     layoutStructuredMath(element.closest<HTMLElement>(".structured-math"));
   });
-  element.addEventListener("blur", () => updateSlot(path, element.textContent ?? "", options));
+  element.addEventListener("blur", () => {
+    const root = element.closest<HTMLElement>(".structured-math");
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (root && active instanceof HTMLElement && root.contains(active)) return;
+      commitRoot(element, options);
+    });
+  });
   element.addEventListener("mousedown", (event) => event.stopPropagation());
   element.addEventListener("click", (event) => event.stopPropagation());
 
   return element;
 }
 
-function updateSlot(path: MathPath, text: string, options: StructuredMathViewOptions): void {
-  const current = normalizeMathNode(options.node.attrs.mathAst) ?? emptyMath;
-  const next = replaceAtPath(current, path, textToEditableMath(text));
+function handleRootNavigation(event: KeyboardEvent, root: HTMLElement): void {
+  if (event.target instanceof HTMLElement && event.target.closest(".math-edit-slot")) return;
+  if (!["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const backward = event.shiftKey || event.key === "ArrowLeft" || event.key === "ArrowUp";
+  focusEdgeSlot(root, backward ? "end" : "start");
+}
+
+function handleSlotNavigation(event: KeyboardEvent, element: HTMLElement, path: MathPath, options: StructuredMathViewOptions): boolean {
+  const root = element.closest<HTMLElement>(".structured-math");
+  if (!root) return false;
+
+  if (event.key === "Tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    syncSlotToRoot(root, path, element.textContent ?? "", options);
+    focusRelativeSlot(root, element, event.shiftKey ? -1 : 1);
+    return true;
+  }
+
+  if (event.key === "ArrowUp") {
+    const target = verticalTarget(element, "up");
+    event.preventDefault();
+    event.stopPropagation();
+    if (!target) return true;
+    syncSlotToRoot(root, path, element.textContent ?? "", options);
+    focusSlot(target);
+    return true;
+  }
+
+  if (event.key === "ArrowDown") {
+    const target = verticalTarget(element, "down");
+    event.preventDefault();
+    event.stopPropagation();
+    if (!target) return true;
+    syncSlotToRoot(root, path, element.textContent ?? "", options);
+    focusSlot(target);
+    return true;
+  }
+
+  if (event.key === "ArrowLeft" && caretAtBoundary(element, "start")) {
+    const previous = relativeSlot(root, element, -1);
+    event.preventDefault();
+    event.stopPropagation();
+    if (!previous) return true;
+    syncSlotToRoot(root, path, element.textContent ?? "", options);
+    focusSlot(previous, "end");
+    return true;
+  }
+
+  if (event.key === "ArrowRight" && caretAtBoundary(element, "end")) {
+    const next = relativeSlot(root, element, 1);
+    event.preventDefault();
+    event.stopPropagation();
+    if (!next) return true;
+    syncSlotToRoot(root, path, element.textContent ?? "", options);
+    focusSlot(next, "start");
+    return true;
+  }
+
+  return false;
+}
+
+function focusRelativeSlot(root: HTMLElement, current: HTMLElement, direction: 1 | -1): void {
+  const target = relativeSlot(root, current, direction);
+  if (target) focusSlot(target, direction === 1 ? "start" : "end");
+}
+
+function focusEdgeSlot(root: HTMLElement, edge: "start" | "end"): void {
+  const slots = editableSlots(root);
+  const target = edge === "start" ? slots[0] : slots.at(-1);
+  if (target) focusSlot(target, edge);
+}
+
+function relativeSlot(root: HTMLElement, current: HTMLElement, direction: 1 | -1): HTMLElement | undefined {
+  const slots = editableSlots(root);
+  const index = slots.indexOf(current);
+  return index >= 0 ? slots[index + direction] : undefined;
+}
+
+function verticalTarget(current: HTMLElement, direction: "up" | "down"): HTMLElement | undefined {
+  const fraction = current.closest<HTMLElement>(".math-frac");
+  if (fraction) {
+    if (direction === "up" && current.classList.contains("math-frac-denominator")) {
+      return fraction.querySelector<HTMLElement>(".math-frac-numerator") ?? undefined;
+    }
+
+    if (direction === "down" && current.classList.contains("math-frac-numerator")) {
+      return fraction.querySelector<HTMLElement>(".math-frac-denominator") ?? undefined;
+    }
+  }
+
+  const script = current.closest<HTMLElement>(".math-script");
+  if (script) {
+    if (direction === "up") {
+      return (
+        script.querySelector<HTMLElement>(".math-script-sup") ??
+        script.querySelector<HTMLElement>(".math-script-base") ??
+        undefined
+      );
+    }
+
+    return (
+      script.querySelector<HTMLElement>(".math-script-sub") ??
+      script.querySelector<HTMLElement>(".math-script-base") ??
+      undefined
+    );
+  }
+
+  const sqrt = current.closest<HTMLElement>(".math-sqrt");
+  if (sqrt) {
+    if (direction === "up" && current.classList.contains("math-sqrt-body")) {
+      return sqrt.querySelector<HTMLElement>(".math-sqrt-index") ?? undefined;
+    }
+
+    if (direction === "down" && current.classList.contains("math-sqrt-index")) {
+      return sqrt.querySelector<HTMLElement>(".math-sqrt-body") ?? undefined;
+    }
+  }
+
+  const root = current.closest<HTMLElement>(".structured-math");
+  if (!root) return undefined;
+
+  return closestSlotByGeometry(editableSlots(root), current, direction);
+}
+
+function closestSlotByGeometry(slots: readonly HTMLElement[], current: HTMLElement, direction: "up" | "down"): HTMLElement | undefined {
+  const currentBox = current.getBoundingClientRect();
+  const currentX = currentBox.left + currentBox.width / 2;
+  const candidates = slots.filter((slot) => {
+    if (slot === current) return false;
+    const box = slot.getBoundingClientRect();
+    return direction === "up" ? box.bottom <= currentBox.top : box.top >= currentBox.bottom;
+  });
+
+  return candidates
+    .map((slot) => {
+      const box = slot.getBoundingClientRect();
+      const slotX = box.left + box.width / 2;
+      const slotY = direction === "up" ? box.bottom : box.top;
+      const currentY = direction === "up" ? currentBox.top : currentBox.bottom;
+      return {
+        slot,
+        score: Math.abs(slotX - currentX) + Math.abs(slotY - currentY) * 1.6,
+      };
+    })
+    .sort((a, b) => a.score - b.score)[0]?.slot;
+}
+
+function editableSlots(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(".math-edit-slot"));
+}
+
+function focusSlot(slot: HTMLElement, edge: "start" | "end" = "end"): void {
+  slot.focus();
+  const selection = window.getSelection();
+  const range = document.createRange();
+  const textNode = slot.firstChild;
+  const offset = edge === "start" ? 0 : (textNode?.textContent?.length ?? 0);
+
+  range.setStart(textNode ?? slot, textNode ? offset : 0);
+  range.collapse(true);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function caretAtBoundary(element: HTMLElement, boundary: "start" | "end"): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return true;
+
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer) || !range.collapsed) return false;
+
+  const offset = range.startOffset;
+  const textLength = element.textContent?.length ?? 0;
+  return boundary === "start" ? offset === 0 : offset >= textLength;
+}
+
+function syncSlotToRoot(root: HTMLElement, path: MathPath, text: string, options: StructuredMathViewOptions): void {
+  const current = getRootAst(root) ?? normalizeMathNode(options.node.attrs.mathAst) ?? emptyMath;
+  setRootAst(root, replaceAtPath(current, path, textToEditableMath(text)));
+}
+
+function commitRoot(element: HTMLElement, options: StructuredMathViewOptions): void {
+  const root = element.closest<HTMLElement>(".structured-math");
+  if (!root) return;
+
+  const elementPath = pathFromSlot(element);
+  if (elementPath) syncSlotToRoot(root, elementPath, element.textContent ?? "", options);
+
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== element && active.classList.contains("math-edit-slot")) {
+    const path = pathFromSlot(active);
+    if (path) syncSlotToRoot(root, path, active.textContent ?? "", options);
+  }
+
+  updateMathAst(getRootAst(root) ?? normalizeMathNode(options.node.attrs.mathAst) ?? emptyMath, options);
+}
+
+function updateMathAst(next: MathNode, options: StructuredMathViewOptions): void {
   const pos = options.getPos();
 
   if (pos === undefined) return;
@@ -143,6 +355,24 @@ function updateSlot(path: MathPath, text: string, options: StructuredMathViewOpt
   const attrs = mathAttrsFromAst(next);
   const tr = options.editor.state.tr.setNodeMarkup(pos, undefined, attrs);
   options.editor.view.dispatch(tr);
+}
+
+function setRootAst(root: HTMLElement, ast: MathNode): void {
+  root.dataset.mathAst = JSON.stringify(ast);
+}
+
+function getRootAst(root: HTMLElement): MathNode | undefined {
+  try {
+    return normalizeMathNode(JSON.parse(root.dataset.mathAst ?? "null"));
+  } catch {
+    return undefined;
+  }
+}
+
+function pathFromSlot(slot: HTMLElement): MathPath | undefined {
+  if (!slot.classList.contains("math-edit-slot")) return undefined;
+  const path = slot.dataset.path ?? "";
+  return path ? path.split(".") : [];
 }
 
 function layoutStructuredMath(root: HTMLElement | null): void {

@@ -7,6 +7,7 @@
   import {
     cycleTextBeforeCursor,
     cycleSelectedMath,
+    focusSelectedMathSlot,
     insertBlockMath,
     insertInlineMath,
     insertMathTemplate,
@@ -89,10 +90,19 @@
     }
 
     if (event.key === "Tab") {
-      const handled = cycleSelectedMath(editor) || cycleTextBeforeCursor(editor);
+      event.preventDefault();
+      const handled = focusSelectedMathSlot(editor, event.shiftKey ? "backward" : "forward") || cycleSelectedMath(editor) || cycleTextBeforeCursor(editor);
       if (handled) {
-        event.preventDefault();
         emitDocumentChange();
+      }
+      return;
+    }
+
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+      const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? "backward" : "forward";
+      if (focusSelectedMathSlot(editor, direction)) {
+        event.preventDefault();
+        return;
       }
     }
   }

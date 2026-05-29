@@ -50,7 +50,11 @@ const StructuredInlineMath = InlineMath.extend({
         katexOptions,
       }),
       ignoreMutation: () => true,
-      stopEvent: (event: Event) => event.target instanceof HTMLElement && event.target.closest(".math-edit-slot") !== null,
+      stopEvent: (event: Event) => {
+        if (!(event.target instanceof HTMLElement)) return false;
+        if (!event.target.closest(".structured-math")) return false;
+        return event.type === "keydown" || event.target.closest(".math-edit-slot") !== null;
+      },
     });
   },
 });
@@ -75,7 +79,11 @@ const StructuredBlockMath = BlockMath.extend({
         katexOptions,
       }),
       ignoreMutation: () => true,
-      stopEvent: (event: Event) => event.target instanceof HTMLElement && event.target.closest(".math-edit-slot") !== null,
+      stopEvent: (event: Event) => {
+        if (!(event.target instanceof HTMLElement)) return false;
+        if (!event.target.closest(".structured-math")) return false;
+        return event.type === "keydown" || event.target.closest(".math-edit-slot") !== null;
+      },
     });
   },
 });
