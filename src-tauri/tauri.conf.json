@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nichtnoch/tauri-docs/refs/heads/dev/src/tauri-2.json",
+  "productName": "Mogan STEM",
+  "version": "0.1.0",
+  "identifier": "app.mogan.stem",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Mogan STEM",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true
+  }
+}

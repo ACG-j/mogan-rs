@@ -1,0 +1,10 @@
+[package]
+name = "mogan-convert"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+mogan-core = { path = "../mogan-core" }
+serde.workspace = true
+thiserror.workspace = true

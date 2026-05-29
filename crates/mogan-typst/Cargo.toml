@@ -1,0 +1,12 @@
+[package]
+name = "mogan-typst"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+mogan-core = { path = "../mogan-core" }
+typst = "0.14.2"
+typst-ide = "0.14.2"
+serde.workspace = true
+thiserror.workspace = true

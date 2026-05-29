@@ -1,1 +1,33 @@
+# Rust
 /target
+**/*.rs.bk
+
+# Node / frontend
+node_modules/
+dist/
+.svelte-kit/
+
+# Coverage
+lcov.info
+coverage/
+*.profraw
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+*.deb
+*.AppImage
+*.dmg
+*.msi

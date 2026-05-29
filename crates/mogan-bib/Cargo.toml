@@ -1,0 +1,11 @@
+[package]
+name = "mogan-bib"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+mogan-core = { path = "../mogan-core" }
+hayagriva = "0.8"
+serde.workspace = true
+thiserror.workspace = true
