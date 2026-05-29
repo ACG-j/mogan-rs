@@ -207,6 +207,146 @@
     color: #fafaf7;
   }
 
+  .editor-wrapper :global(.structured-math) {
+    color: #fafaf7;
+    font-family: KaTeX_Math, "Times New Roman", "Noto Serif CJK SC", serif;
+    font-style: italic;
+    white-space: nowrap;
+    cursor: text;
+  }
+
+  .editor-wrapper :global(.structured-math--block) {
+    display: block;
+    margin: 32px auto;
+    text-align: center;
+  }
+
+  .editor-wrapper :global(.structured-math--inline) {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+  }
+
+  .editor-wrapper :global(.math-row) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .editor-wrapper :global(.math-edit-slot) {
+    display: inline-block;
+    min-width: 0.45em;
+    min-height: 1.1em;
+    padding: 0;
+    border-radius: 2px;
+    outline: none;
+    caret-color: #ffffff;
+    text-align: center;
+  }
+
+  .editor-wrapper :global(.math-edit-slot:focus) {
+    background: rgb(154 188 178 / 18%);
+    box-shadow: 0 0 0 1px rgb(154 188 178 / 75%);
+  }
+
+  .editor-wrapper :global(.math-edit-slot:empty::before) {
+    content: attr(data-placeholder);
+    color: rgb(255 255 255 / 38%);
+  }
+
+  .editor-wrapper :global(.math-frac) {
+    --frac-width: auto;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-items: center;
+    width: var(--frac-width);
+    margin: 0 0.08em;
+    line-height: 1;
+    vertical-align: -0.42em;
+  }
+
+  .editor-wrapper :global(.math-frac-slot) {
+    min-width: 0.7em;
+    padding: 0;
+    line-height: 1.02;
+  }
+
+  .editor-wrapper :global(.math-frac-rule) {
+    display: block;
+    width: 100%;
+    height: 0;
+    margin: 0.06em 0 0.04em;
+    border-top: 0.045em solid currentColor;
+  }
+
+  .editor-wrapper :global(.math-frac-denominator) {
+    padding-top: 0;
+  }
+
+  .editor-wrapper :global(.math-sqrt) {
+    display: inline-flex;
+    align-items: flex-end;
+    margin: 0 0.12em;
+    vertical-align: middle;
+  }
+
+  .editor-wrapper :global(.math-sqrt-index) {
+    align-self: flex-start;
+    margin-right: -0.15em;
+    font-size: 0.62em;
+  }
+
+  .editor-wrapper :global(.math-sqrt-radical) {
+    font-size: 1.18em;
+    line-height: 1;
+  }
+
+  .editor-wrapper :global(.math-sqrt-body) {
+    min-width: 1em;
+    padding: 0.04em 0.18em 0;
+    border-top: 1px solid currentColor;
+  }
+
+  .editor-wrapper :global(.math-script) {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    line-height: 1;
+  }
+
+  .editor-wrapper :global(.math-script-slots) {
+    display: inline-grid;
+    grid-template-rows: auto auto;
+    align-items: center;
+    margin-left: 0.015em;
+    font-size: 0.68em;
+    line-height: 0.95;
+    transform: translateY(var(--script-y, -0.08em));
+  }
+
+  .editor-wrapper :global(.math-script-sup) {
+    align-self: start;
+  }
+
+  .editor-wrapper :global(.math-script-sub) {
+    align-self: end;
+  }
+
+  .editor-wrapper :global(.math-script--sup-only .math-script-slots) {
+    grid-template-rows: auto;
+  }
+
+  .editor-wrapper :global(.math-script--sub-only .math-script-slots) {
+    grid-template-rows: auto;
+  }
+
+  .editor-wrapper :global(.math-neg) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.12em;
+  }
+
   @media (max-width: 760px) {
     .editor-shell {
       padding: 20px 12px 56px;

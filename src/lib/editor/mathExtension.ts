@@ -1,4 +1,13 @@
-import { Mathematics } from "@tiptap/extension-mathematics";
+import { Extension } from "@tiptap/core";
+import { BlockMath, InlineMath } from "@tiptap/extension-mathematics";
+import type { KatexOptions } from "katex";
+import { createStructuredMathView } from "./structuredMathView";
+
+type StructuredMathematicsOptions = {
+  readonly inlineOptions?: Record<string, unknown>;
+  readonly blockOptions?: Record<string, unknown>;
+  readonly katexOptions?: KatexOptions;
+};
 
 function parseMathAstAttribute(value: string | null): unknown {
   if (!value) return null;
@@ -10,24 +19,82 @@ function parseMathAstAttribute(value: string | null): unknown {
   }
 }
 
-export const StructuredMathematics = Mathematics.extend({
-  addGlobalAttributes() {
+const mathAstAttribute = {
+  default: null,
+  parseHTML: (element: HTMLElement) => parseMathAstAttribute(element.getAttribute("data-math-ast")),
+  renderHTML: (attributes: Record<string, unknown>) => {
+    if (!attributes.mathAst) return {};
+    return {
+      "data-math-ast": JSON.stringify(attributes.mathAst),
+    };
+  },
+};
+
+const StructuredInlineMath = InlineMath.extend({
+  addAttributes(this: any) {
+    return {
+      ...(this.parent?.() ?? {}),
+      mathAst: mathAstAttribute,
+    };
+  },
+
+  addNodeView(this: any) {
+    const { katexOptions } = this.options;
+
+    return ({ editor, node, getPos }: any) => ({
+      dom: createStructuredMathView({
+        editor,
+        node,
+        getPos,
+        displayMode: false,
+        katexOptions,
+      }),
+      ignoreMutation: () => true,
+      stopEvent: (event: Event) => event.target instanceof HTMLElement && event.target.closest(".math-edit-slot") !== null,
+    });
+  },
+});
+
+const StructuredBlockMath = BlockMath.extend({
+  addAttributes(this: any) {
+    return {
+      ...(this.parent?.() ?? {}),
+      mathAst: mathAstAttribute,
+    };
+  },
+
+  addNodeView(this: any) {
+    const { katexOptions } = this.options;
+
+    return ({ editor, node, getPos }: any) => ({
+      dom: createStructuredMathView({
+        editor,
+        node,
+        getPos,
+        displayMode: true,
+        katexOptions,
+      }),
+      ignoreMutation: () => true,
+      stopEvent: (event: Event) => event.target instanceof HTMLElement && event.target.closest(".math-edit-slot") !== null,
+    });
+  },
+});
+
+export const StructuredMathematics = Extension.create<StructuredMathematicsOptions>({
+  name: "structuredMathematics",
+
+  addOptions() {
+    return {
+      inlineOptions: undefined,
+      blockOptions: undefined,
+      katexOptions: undefined,
+    };
+  },
+
+  addExtensions() {
     return [
-      {
-        types: ["inlineMath", "blockMath"],
-        attributes: {
-          mathAst: {
-            default: null,
-            parseHTML: (element) => parseMathAstAttribute(element.getAttribute("data-math-ast")),
-            renderHTML: (attributes) => {
-              if (!attributes.mathAst) return {};
-              return {
-                "data-math-ast": JSON.stringify(attributes.mathAst),
-              };
-            },
-          },
-        },
-      },
+      StructuredBlockMath.configure({ ...this.options.blockOptions, katexOptions: this.options.katexOptions }),
+      StructuredInlineMath.configure({ ...this.options.inlineOptions, katexOptions: this.options.katexOptions }),
     ];
   },
 });

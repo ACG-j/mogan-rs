@@ -175,7 +175,10 @@ export function makeInitialContent(): JSONContent {
               denominator: row([symbol("\\partial"), symbol("y")]),
             },
             symbol("\\cdot"),
-            symbol("dy=yx^{y-1}dx+x^y"),
+            symbol("dy=y"),
+            { type: "script", base: symbol("x"), sup: row([symbol("y-1")]) },
+            symbol("dx+"),
+            { type: "script", base: symbol("x"), sup: symbol("y") },
             symbol("\\ln"),
             symbol("xdy"),
           ]),
@@ -183,7 +186,15 @@ export function makeInitialContent(): JSONContent {
       },
       {
         type: "blockMath",
-        attrs: mathAttrsFromAst(row([symbol("dz\\vert_{(e,2)}=2e dx+e^2dy")])),
+        attrs: mathAttrsFromAst(
+          row([
+            symbol("dz"),
+            { type: "script", base: symbol("\\vert"), sub: symbol("(e,2)") },
+            symbol("=2e dx+"),
+            { type: "script", base: symbol("e"), sup: symbol("2") },
+            symbol("dy"),
+          ]),
+        ),
       },
     ],
   };
