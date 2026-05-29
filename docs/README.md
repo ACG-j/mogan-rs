@@ -1,8 +1,8 @@
-# Mogan STEM 开发文档
+# Mogan rs 开发文档
 
 ## 项目概述
 
-Mogan STEM 是一个现代化的科学写作桌面应用，基于 Rust + Tauri v2 + Typst + Svelte 构建。
+Mogan rs 是一个现代化的科学写作桌面应用，基于 Rust + Tauri v2 + Typst + Svelte 构建。
 
 ## 技术栈
 
