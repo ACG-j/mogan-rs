@@ -1,4 +1,4 @@
-name: CI
+name: Check
 
 on:
   push:
@@ -10,7 +10,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── 代码格式 ──────────────────────────────────────────
   format:
     runs-on: ubuntu-latest
     steps:
@@ -20,7 +19,6 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  # ── 静态分析 (Lint + 复杂度) ──────────────────────────
   clippy:
     runs-on: ubuntu-latest
     steps:
@@ -28,50 +26,52 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: taiki-e/install-action@cargo-crap
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-crap
       - name: Install system deps (Tauri)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
-      - name: Clippy (警告=错误)
+      - name: Clippy (warnings as errors)
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: CRAP 复杂度分析
+      - name: CRAP complexity analysis
         run: cargo crap
 
-  # ── 安全审计 ──────────────────────────────────────────
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-audit
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
       - run: cargo audit
 
-  # ── 测试 + 覆盖率 + 文档 ──────────────────────────────
-  test:
+  coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@cargo-tarpaulin
-      - uses: taiki-e/install-action@cargo-crap
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-tarpaulin,cargo-crap
       - name: Install system deps (Tauri)
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
-      - name: 运行测试 + 生成 lcov 覆盖率
+      - name: Test + generate lcov coverage
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
-      - name: CRAP 门禁 (基于覆盖率)
+      - name: CRAP gate (with coverage)
         run: cargo crap --lcov lcov.info --fail-above
-      - name: Tarpaulin 覆盖率报告
+      - name: Tarpaulin coverage report
         run: cargo tarpaulin --workspace --out Html --output-dir coverage
-      - name: 上传覆盖率产物
+      - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage/
-      - name: 文档生成
+      - name: Generate docs
         run: cargo doc --workspace --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
