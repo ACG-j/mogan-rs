@@ -256,6 +256,9 @@
 
   .editor-wrapper :global(.math-frac) {
     --frac-width: auto;
+    --frac-sep: 0.08em;
+    --frac-rule-width: 0.045em;
+    --frac-axis-shift: 0px;
     display: inline-flex;
     flex-direction: column;
     align-items: center;
@@ -263,7 +266,8 @@
     width: var(--frac-width);
     margin: 0 0.08em;
     line-height: 1;
-    vertical-align: -0.42em;
+    transform: translateY(var(--frac-axis-shift));
+    vertical-align: middle;
   }
 
   .editor-wrapper :global(.math-frac-slot) {
@@ -276,8 +280,8 @@
     display: block;
     width: 100%;
     height: 0;
-    margin: 0.06em 0 0.04em;
-    border-top: 0.045em solid currentColor;
+    margin: var(--frac-sep) 0 calc(var(--frac-sep) * 0.82);
+    border-top: var(--frac-rule-width) solid currentColor;
   }
 
   .editor-wrapper :global(.math-frac-denominator) {
@@ -285,9 +289,11 @@
   }
 
   .editor-wrapper :global(.math-sqrt) {
+    --sqrt-scale: 1.12;
+    --sqrt-gap: 0.055em;
     display: inline-flex;
     align-items: flex-end;
-    margin: 0 0.12em;
+    margin: 0 0.08em;
     vertical-align: middle;
   }
 
@@ -298,14 +304,15 @@
   }
 
   .editor-wrapper :global(.math-sqrt-radical) {
-    font-size: 1.18em;
+    font-size: calc(1em * var(--sqrt-scale));
     line-height: 1;
+    transform-origin: 100% 100%;
   }
 
   .editor-wrapper :global(.math-sqrt-body) {
     min-width: 1em;
-    padding: 0.04em 0.18em 0;
-    border-top: 1px solid currentColor;
+    padding: var(--sqrt-gap) 0.14em 0;
+    border-top: 0.045em solid currentColor;
   }
 
   .editor-wrapper :global(.math-script) {
@@ -316,13 +323,15 @@
   }
 
   .editor-wrapper :global(.math-script-slots) {
+    --script-x: 0px;
+    --script-y: -0.08em;
     display: inline-grid;
     grid-template-rows: auto auto;
     align-items: center;
-    margin-left: 0.015em;
+    margin-left: 0.01em;
     font-size: 0.68em;
     line-height: 0.95;
-    transform: translateY(var(--script-y, -0.08em));
+    transform: translate(var(--script-x), var(--script-y));
   }
 
   .editor-wrapper :global(.math-script-sup) {
