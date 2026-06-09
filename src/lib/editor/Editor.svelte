@@ -1,17 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { Editor } from "@tiptap/core";
-  import StarterKit from "@tiptap/starter-kit";
   import "katex/dist/katex.min.css";
-  import { StructuredMathematics } from "./mathExtension";
-  import {
-    cycleTextBeforeCursor,
-    cycleSelectedMath,
-    insertBlockMath,
-    insertInlineMath,
-    insertMathTemplate,
-    makeInitialContent,
-  } from "./commands";
+  import { createMoganEditor } from "./createEditor";
 
   type Props = {
     onDocumentChange?: (payload: { json: unknown; typst: string }) => void;
@@ -32,97 +23,10 @@
     });
   }
 
-  function handleKeyDown(event: KeyboardEvent): void {
-    if (!editor) return;
-
-    if (event.key === "$" && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault();
-      insertInlineMath(editor, "x");
-      emitDocumentChange();
-      return;
-    }
-
-    if (event.key === "$" && event.altKey) {
-      event.preventDefault();
-      insertBlockMath(editor);
-      emitDocumentChange();
-      return;
-    }
-
-    if (event.altKey && !event.ctrlKey && !event.metaKey) {
-      switch (event.key) {
-        case "f":
-          event.preventDefault();
-          insertMathTemplate(editor, "fraction");
-          emitDocumentChange();
-          return;
-        case "s":
-          event.preventDefault();
-          insertMathTemplate(editor, "sqrt");
-          emitDocumentChange();
-          return;
-        case "r":
-          event.preventDefault();
-          insertMathTemplate(editor, "varSqrt");
-          emitDocumentChange();
-          return;
-        case "n":
-          event.preventDefault();
-          insertMathTemplate(editor, "neg");
-          emitDocumentChange();
-          return;
-      }
-    }
-
-    if (event.key === "_" && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault();
-      insertMathTemplate(editor, "subscript");
-      emitDocumentChange();
-      return;
-    }
-
-    if (event.key === "^" && !event.altKey && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault();
-      insertMathTemplate(editor, "superscript");
-      emitDocumentChange();
-      return;
-    }
-
-    if (event.key === "Tab") {
-      const handled = cycleSelectedMath(editor) || cycleTextBeforeCursor(editor);
-      if (handled) {
-        event.preventDefault();
-        emitDocumentChange();
-      }
-      return;
-    }
-  }
-
   onMount(() => {
-    editor = new Editor({
+    editor = createMoganEditor({
       element: editorContainer,
-      extensions: [
-        StarterKit,
-        StructuredMathematics.configure({
-          katexOptions: {
-            throwOnError: false,
-            strict: false,
-          },
-        }),
-      ],
-      content: makeInitialContent(),
-      editorProps: {
-        attributes: {
-          class: "mogan-editor-surface",
-          spellcheck: "false",
-        },
-        handleKeyDown: (_view, event) => {
-          handleKeyDown(event);
-          return event.defaultPrevented;
-        },
-      },
-      onCreate: emitDocumentChange,
-      onUpdate: emitDocumentChange,
+      emitDocumentChange,
     });
   });
 
@@ -171,7 +75,10 @@
     outline: none;
     color: #f6f6f4;
     caret-color: #ffffff;
-    font: 22px/1.85 "Times New Roman", "Noto Serif CJK SC", serif;
+    font:
+      22px/1.85 "Times New Roman",
+      "Noto Serif CJK SC",
+      serif;
     text-align: center;
   }
 

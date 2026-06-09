@@ -1,9 +1,14 @@
-import type { Editor, JSONContent } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
 import { cycleLatexSymbol } from "../math/cycleRules";
 import { applyLegoRules } from "../math/legoRules";
 import { templateLatex, type MathTemplate } from "../math/latex";
 import { emptyMath, row, symbol, textMath, type MathNode } from "../math/ast";
-import { fallbackMathFromLatex, mathAttrsFromAst, mathNodeFromAttrs, type MathAttrs } from "../math/serialize";
+import {
+  fallbackMathFromLatex,
+  mathAttrsFromAst,
+  mathNodeFromAttrs,
+  type MathAttrs,
+} from "../math/serialize";
 
 function selectedText(editor: Editor): string {
   const { state } = editor;
@@ -23,7 +28,11 @@ function insertBlockMathAst(editor: Editor, mathAst: MathNode): void {
   insertMathNode(editor, "blockMath", mathAttrsFromAst(mathAst));
 }
 
-function insertMathNode(editor: Editor, type: "inlineMath" | "blockMath", attrs: MathAttrs): void {
+function insertMathNode(
+  editor: Editor,
+  type: "inlineMath" | "blockMath",
+  attrs: MathAttrs,
+): void {
   const nodeType = editor.schema.nodes[type];
   if (!nodeType) return;
 
@@ -37,18 +46,28 @@ export function insertInlineMath(editor: Editor, latex = "x"): void {
   insertInlineMathAst(editor, fallbackMathFromLatex(latex));
 }
 
-export function insertBlockMath(editor: Editor, latex = "x^2 + y^2 = z^2"): void {
+export function insertBlockMath(
+  editor: Editor,
+  latex = "x^2 + y^2 = z^2",
+): void {
   insertBlockMathAst(editor, fallbackMathFromLatex(latex));
 }
 
-export function insertMathTemplate(editor: Editor, template: MathTemplate): void {
+export function insertMathTemplate(
+  editor: Editor,
+  template: MathTemplate,
+): void {
   const selected = selectedText(editor).trim();
   const base = selected ? selectedMath(editor) : symbol("x");
   let mathAst: MathNode = fallbackMathFromLatex(templateLatex(template));
 
   switch (template) {
     case "fraction":
-      mathAst = { type: "frac", numerator: selected ? base : symbol("1"), denominator: selected ? emptyMath : symbol("2") };
+      mathAst = {
+        type: "frac",
+        numerator: selected ? base : symbol("1"),
+        denominator: selected ? emptyMath : symbol("2"),
+      };
       break;
     case "sqrt":
       mathAst = { type: "sqrt", body: base };
@@ -81,8 +100,14 @@ export function insertMathTemplate(editor: Editor, template: MathTemplate): void
       mathAst = {
         type: "cases",
         rows: [
-          { body: symbol("x"), condition: row([symbol("x"), symbol(">"), symbol("0")]) },
-          { body: symbol("0"), condition: row([symbol("x"), symbol("\\le"), symbol("0")]) },
+          {
+            body: symbol("x"),
+            condition: row([symbol("x"), symbol(">"), symbol("0")]),
+          },
+          {
+            body: symbol("0"),
+            condition: row([symbol("x"), symbol("\\le"), symbol("0")]),
+          },
         ],
       };
       break;
@@ -99,7 +124,10 @@ export function cycleSelectedMath(editor: Editor): boolean {
   const { state } = editor;
   const selectedNode = state.selection.$from.nodeAfter;
 
-  if (!selectedNode || !["inlineMath", "blockMath"].includes(selectedNode.type.name)) {
+  if (
+    !selectedNode ||
+    !["inlineMath", "blockMath"].includes(selectedNode.type.name)
+  ) {
     return false;
   }
 
@@ -109,7 +137,9 @@ export function cycleSelectedMath(editor: Editor): boolean {
   if (mathAst?.type === "symbol") {
     const cycled = symbol(cycleLatexSymbol(mathAst.value));
     if (cycled.value === mathAst.value) return false;
-    editor.view.dispatch(state.tr.setNodeMarkup(pos, undefined, mathAttrsFromAst(cycled)));
+    editor.view.dispatch(
+      state.tr.setNodeMarkup(pos, undefined, mathAttrsFromAst(cycled)),
+    );
     return true;
   }
 
@@ -119,7 +149,9 @@ export function cycleSelectedMath(editor: Editor): boolean {
   const latex = cycleLatexSymbol(currentLatex);
   if (latex === currentLatex) return false;
 
-  editor.view.dispatch(state.tr.setNodeMarkup(pos, undefined, mathAttrsFromAst(symbol(latex))));
+  editor.view.dispatch(
+    state.tr.setNodeMarkup(pos, undefined, mathAttrsFromAst(symbol(latex))),
+  );
   return true;
 }
 
@@ -139,67 +171,4 @@ export function cycleTextBeforeCursor(editor: Editor): boolean {
     .run();
   insertInlineMathAst(editor, symbol(latex));
   return true;
-}
-
-export function makeInitialContent(): JSONContent {
-  return {
-    type: "doc",
-    content: [
-      {
-        type: "heading",
-        attrs: { level: 1 },
-        content: [{ type: "text", text: "全微分" }],
-      },
-      {
-        type: "paragraph",
-        content: [
-          { type: "text", text: "设 " },
-          {
-            type: "inlineMath",
-            attrs: mathAttrsFromAst(row([symbol("z=f(x,y)="), { type: "script", base: symbol("x"), sup: symbol("y") }])),
-          },
-          { type: "text", text: "，则" },
-        ],
-      },
-      {
-        type: "blockMath",
-        attrs: mathAttrsFromAst(
-          row([
-            symbol("dz="),
-            {
-              type: "frac",
-              numerator: row([symbol("\\partial"), symbol("z")]),
-              denominator: row([symbol("\\partial"), symbol("x")]),
-            },
-            symbol("\\cdot"),
-            symbol("dx+"),
-            {
-              type: "frac",
-              numerator: row([symbol("\\partial"), symbol("z")]),
-              denominator: row([symbol("\\partial"), symbol("y")]),
-            },
-            symbol("\\cdot"),
-            symbol("dy=y"),
-            { type: "script", base: symbol("x"), sup: row([symbol("y-1")]) },
-            symbol("dx+"),
-            { type: "script", base: symbol("x"), sup: symbol("y") },
-            symbol("\\ln"),
-            symbol("xdy"),
-          ]),
-        ),
-      },
-      {
-        type: "blockMath",
-        attrs: mathAttrsFromAst(
-          row([
-            symbol("dz"),
-            { type: "script", base: symbol("\\vert"), sub: symbol("(e,2)") },
-            symbol("=2e dx+"),
-            { type: "script", base: symbol("e"), sup: symbol("2") },
-            symbol("dy"),
-          ]),
-        ),
-      },
-    ],
-  };
 }
