@@ -1,9 +1,9 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import katex, { type KatexOptions } from "katex";
-import { emptyMath, normalizeMathNode, type MathNode } from "../math/ast";
-import { mathToLatex, mathAttrsFromAst } from "../math/serialize";
-import { mathToEditableText, nodeAtPath, replaceAtPath, textToEditableMath, type MathPath } from "../math/editPath";
+import { normalizeMathNode, type MathNode } from "../math/ast";
+import { mathToLatex } from "../math/serialize";
+import { mathToEditableText, type MathPath } from "../math/editPath";
 
 type StructuredMathViewOptions = {
   readonly editor: Editor;
@@ -13,10 +13,12 @@ type StructuredMathViewOptions = {
   readonly katexOptions?: KatexOptions;
 };
 
-type SlotRenderOptions = {
+type LeafRenderOptions = {
   readonly className?: string;
   readonly placeholder?: string;
 };
+
+type CursorEdge = "start" | "end";
 
 export function createStructuredMathView(options: StructuredMathViewOptions): HTMLElement {
   const mathAst = normalizeMathNode(options.node.attrs.mathAst);
@@ -27,12 +29,14 @@ export function createStructuredMathView(options: StructuredMathViewOptions): HT
 
   const wrapper = document.createElement(options.displayMode ? "div" : "span");
   wrapper.className = options.displayMode ? "structured-math structured-math--block" : "structured-math structured-math--inline";
-  wrapper.tabIndex = -1;
+  wrapper.tabIndex = 0;
   wrapper.dataset.type = options.displayMode ? "block-math" : "inline-math";
+  wrapper.dataset.nodePos = String(options.getPos() ?? "");
   wrapper.setAttribute("data-latex", mathToLatex(mathAst));
-  setRootAst(wrapper, mathAst);
   wrapper.appendChild(renderNode(mathAst, [], options));
-  wrapper.addEventListener("keydown", ((event: KeyboardEvent) => handleRootNavigation(event, wrapper)) as EventListener);
+  wrapper.addEventListener("mousedown", (event) => handleRootPointer(event, wrapper));
+  wrapper.addEventListener("keydown", (event) => handleRootKeyDown(event, wrapper, options));
+  wrapper.addEventListener("blur", () => clearCursor(wrapper));
   requestAnimationFrame(() => layoutStructuredMath(wrapper));
 
   return wrapper;
@@ -45,39 +49,36 @@ function renderNode(node: MathNode, path: MathPath, options: StructuredMathViewO
       node.children.forEach((child, index) => element.appendChild(renderNode(child, [...path, String(index)], options)));
       return element;
     }
-    case "symbol": {
-      return renderKatexFragment(node, options, "math-symbol");
-    }
+    case "symbol":
+      return renderLeaf(path, node, { className: "math-symbol-leaf" });
     case "placeholder":
-      return renderSlot(path, options, { className: "math-placeholder", placeholder: node.label ?? "" });
+      return renderLeaf(path, node, { className: "math-placeholder", placeholder: node.label ?? "" });
     case "frac": {
       const element = span("math-frac");
-      element.appendChild(renderSlot([...path, "numerator"], options, { className: "math-frac-slot math-frac-numerator" }, node.numerator));
+      element.appendChild(renderStructureSlot([...path, "numerator"], options, "math-frac-slot math-frac-numerator", node.numerator));
       element.appendChild(span("math-frac-rule"));
-      element.appendChild(
-        renderSlot([...path, "denominator"], options, { className: "math-frac-slot math-frac-denominator" }, node.denominator),
-      );
+      element.appendChild(renderStructureSlot([...path, "denominator"], options, "math-frac-slot math-frac-denominator", node.denominator));
       return element;
     }
     case "sqrt": {
       const element = span("math-sqrt");
       if (node.index) {
-        element.appendChild(renderSlot([...path, "index"], options, { className: "math-sqrt-index" }, node.index));
+        element.appendChild(renderStructureSlot([...path, "index"], options, "math-sqrt-index", node.index));
       }
       const radical = span("math-sqrt-radical");
       radical.textContent = "√";
       element.appendChild(radical);
-      element.appendChild(renderSlot([...path, "body"], options, { className: "math-sqrt-body" }, node.body));
+      element.appendChild(renderStructureSlot([...path, "body"], options, "math-sqrt-body", node.body));
       return element;
     }
     case "script": {
       const mode = node.sup && node.sub ? "both" : node.sup ? "sup-only" : "sub-only";
       const element = span(`math-script math-script--${mode}`);
-      element.appendChild(renderSlot([...path, "base"], options, { className: "math-script-base" }, node.base));
+      element.appendChild(renderStructureSlot([...path, "base"], options, "math-script-base", node.base));
 
       const scripts = span("math-script-slots");
-      if (node.sup) scripts.appendChild(renderSlot([...path, "sup"], options, { className: "math-script-sup" }, node.sup));
-      if (node.sub) scripts.appendChild(renderSlot([...path, "sub"], options, { className: "math-script-sub" }, node.sub));
+      if (node.sup) scripts.appendChild(renderStructureSlot([...path, "sup"], options, "math-script-sup", node.sup));
+      if (node.sub) scripts.appendChild(renderStructureSlot([...path, "sub"], options, "math-script-sub", node.sub));
       element.appendChild(scripts);
       return element;
     }
@@ -86,7 +87,7 @@ function renderNode(node: MathNode, path: MathPath, options: StructuredMathViewO
       const sign = span("math-neg-sign");
       sign.textContent = "¬";
       element.appendChild(sign);
-      element.appendChild(renderSlot([...path, "body"], options, { className: "math-neg-body" }, node.body));
+      element.appendChild(renderStructureSlot([...path, "body"], options, "math-neg-body", node.body));
       return element;
     }
     case "matrix":
@@ -95,148 +96,122 @@ function renderNode(node: MathNode, path: MathPath, options: StructuredMathViewO
   }
 }
 
-function renderSlot(
-  path: MathPath,
-  options: StructuredMathViewOptions,
-  slotOptions: SlotRenderOptions = {},
-  node = nodeAtPath(normalizeMathNode(options.node.attrs.mathAst) ?? emptyMath, path),
-): HTMLElement {
-  const element = span(`math-edit-slot ${slotOptions.className ?? ""}`.trim());
-  element.contentEditable = "true";
-  element.spellcheck = false;
+function renderStructureSlot(path: MathPath, options: StructuredMathViewOptions, className: string, node: MathNode): HTMLElement {
+  const element = span(`math-struct-slot ${className}`.trim());
   element.dataset.path = path.join(".");
-  element.dataset.placeholder = slotOptions.placeholder ?? "";
-  element.textContent = mathToEditableText(node);
-  element.dataset.mathText = element.textContent;
-
-  element.addEventListener("keydown", (event) => {
-    event.stopPropagation();
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      commitRoot(element, options);
-      return;
-    }
-
-    if (handleSlotNavigation(event, element, path, options)) return;
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      options.editor.view.focus();
-      return;
-    }
-  });
-
-  element.addEventListener("input", () => {
-    element.dataset.mathText = element.textContent ?? "";
-    layoutStructuredMath(element.closest<HTMLElement>(".structured-math"));
-  });
-  element.addEventListener("blur", () => {
-    const root = element.closest<HTMLElement>(".structured-math");
-    requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (root && active instanceof HTMLElement && root.contains(active)) return;
-      commitRoot(element, options);
-    });
-  });
-  element.addEventListener("mousedown", (event) => event.stopPropagation());
-  element.addEventListener("click", (event) => event.stopPropagation());
-
+  element.appendChild(renderNode(node, path, options));
   return element;
 }
 
-function handleRootNavigation(event: KeyboardEvent, root: HTMLElement): void {
-  if (event.target instanceof HTMLElement && event.target.closest(".math-edit-slot")) return;
-  if (!["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+function renderLeaf(path: MathPath, node: MathNode, options: LeafRenderOptions = {}): HTMLElement {
+  const element = span(`math-leaf ${options.className ?? ""}`.trim());
+  const text = mathToEditableText(node);
+  element.dataset.path = path.join(".");
+  element.dataset.mathText = text;
+  element.dataset.placeholder = options.placeholder ?? "";
+  element.textContent = text;
+  return element;
+}
+
+function handleRootPointer(event: MouseEvent, root: HTMLElement): void {
+  const target = event.target instanceof HTMLElement ? event.target : undefined;
+  const leaf = target?.closest<HTMLElement>(".math-leaf") ?? closestLeafFromPoint(root, event.clientX, event.clientY);
+  if (!leaf) return;
 
   event.preventDefault();
   event.stopPropagation();
-
-  const backward = event.shiftKey || event.key === "ArrowLeft" || event.key === "ArrowUp";
-  focusEdgeSlot(root, backward ? "end" : "start");
+  focusRoot(root);
+  setCursor(root, leaf, edgeFromPoint(leaf, event.clientX));
 }
 
-function handleSlotNavigation(event: KeyboardEvent, element: HTMLElement, path: MathPath, options: StructuredMathViewOptions): boolean {
-  const root = element.closest<HTMLElement>(".structured-math");
-  if (!root) return false;
+function handleRootKeyDown(event: KeyboardEvent, root: HTMLElement, options: StructuredMathViewOptions): void {
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Escape"].includes(event.key)) return;
 
-  if (event.key === "Tab") {
-    event.preventDefault();
-    event.stopPropagation();
-    syncSlotToRoot(root, path, element.textContent ?? "", options);
-    focusRelativeSlot(root, element, event.shiftKey ? -1 : 1);
-    return true;
+  if (event.key === "Escape") {
+    clearCursor(root);
+    options.editor.view.focus();
+    return;
   }
 
-  if (event.key === "ArrowUp") {
-    const target = verticalTarget(element, "up");
-    event.preventDefault();
-    event.stopPropagation();
-    if (!target) return true;
-    syncSlotToRoot(root, path, element.textContent ?? "", options);
-    focusSlot(target);
-    return true;
+  const current = activeLeaf(root) ?? firstLeaf(root, "start");
+  if (!current) return;
+
+  const target =
+    event.key === "ArrowLeft"
+      ? relativeLeaf(root, current, -1)
+      : event.key === "ArrowRight"
+        ? relativeLeaf(root, current, 1)
+        : verticalLeaf(current, event.key === "ArrowUp" ? "up" : "down");
+
+  if (!target) {
+    clearCursor(root);
+    options.editor.view.focus();
+    return;
   }
 
-  if (event.key === "ArrowDown") {
-    const target = verticalTarget(element, "down");
-    event.preventDefault();
-    event.stopPropagation();
-    if (!target) return true;
-    syncSlotToRoot(root, path, element.textContent ?? "", options);
-    focusSlot(target);
-    return true;
-  }
-
-  if (event.key === "ArrowLeft" && caretAtBoundary(element, "start")) {
-    const previous = relativeSlot(root, element, -1);
-    event.preventDefault();
-    event.stopPropagation();
-    if (!previous) return true;
-    syncSlotToRoot(root, path, element.textContent ?? "", options);
-    focusSlot(previous, "end");
-    return true;
-  }
-
-  if (event.key === "ArrowRight" && caretAtBoundary(element, "end")) {
-    const next = relativeSlot(root, element, 1);
-    event.preventDefault();
-    event.stopPropagation();
-    if (!next) return true;
-    syncSlotToRoot(root, path, element.textContent ?? "", options);
-    focusSlot(next, "start");
-    return true;
-  }
-
-  return false;
+  event.preventDefault();
+  event.stopPropagation();
+  setCursor(root, target, event.key === "ArrowLeft" || event.key === "ArrowUp" ? "end" : "start");
 }
 
-function focusRelativeSlot(root: HTMLElement, current: HTMLElement, direction: 1 | -1): void {
-  const target = relativeSlot(root, current, direction);
-  if (target) focusSlot(target, direction === 1 ? "start" : "end");
+function focusRoot(root: HTMLElement): void {
+  root.focus({ preventScroll: true });
 }
 
-function focusEdgeSlot(root: HTMLElement, edge: "start" | "end"): void {
-  const slots = editableSlots(root);
-  const target = edge === "start" ? slots[0] : slots.at(-1);
-  if (target) focusSlot(target, edge);
+function activeLeaf(root: HTMLElement): HTMLElement | undefined {
+  const path = root.dataset.cursorPath;
+  if (!path) return undefined;
+  return editableLeaves(root).find((leaf) => leaf.dataset.path === path);
 }
 
-function relativeSlot(root: HTMLElement, current: HTMLElement, direction: 1 | -1): HTMLElement | undefined {
-  const slots = editableSlots(root);
-  const index = slots.indexOf(current);
-  return index >= 0 ? slots[index + direction] : undefined;
+function setCursor(root: HTMLElement, leaf: HTMLElement, edge: CursorEdge): void {
+  root.querySelectorAll(".math-leaf--active").forEach((element) => element.classList.remove("math-leaf--active"));
+  leaf.classList.add("math-leaf--active");
+  root.dataset.cursorPath = leaf.dataset.path ?? "";
+  root.dataset.cursorEdge = edge;
+  positionCursor(root, leaf, edge);
 }
 
-function verticalTarget(current: HTMLElement, direction: "up" | "down"): HTMLElement | undefined {
+function clearCursor(root: HTMLElement): void {
+  root.querySelectorAll(".math-leaf--active").forEach((element) => element.classList.remove("math-leaf--active"));
+  root.querySelector<HTMLElement>(".math-cursor-overlay")?.remove();
+  delete root.dataset.cursorPath;
+  delete root.dataset.cursorEdge;
+}
+
+function positionCursor(root: HTMLElement, leaf: HTMLElement, edge: CursorEdge): void {
+  let cursor = root.querySelector<HTMLElement>(".math-cursor-overlay");
+  if (!cursor) {
+    cursor = span("math-cursor-overlay");
+    root.appendChild(cursor);
+  }
+
+  const rootBox = root.getBoundingClientRect();
+  const leafBox = leaf.getBoundingClientRect();
+  const x = edge === "start" ? leafBox.left - rootBox.left : leafBox.right - rootBox.left;
+  cursor.style.left = `${x}px`;
+  cursor.style.top = `${leafBox.top - rootBox.top}px`;
+  cursor.style.height = `${Math.max(leafBox.height, 12)}px`;
+}
+
+function relativeLeaf(root: HTMLElement, current: HTMLElement, direction: 1 | -1): HTMLElement | undefined {
+  const leaves = editableLeaves(root);
+  const index = leaves.indexOf(current);
+  return index >= 0 ? leaves[index + direction] : undefined;
+}
+
+function verticalLeaf(current: HTMLElement, direction: "up" | "down"): HTMLElement | undefined {
   const fraction = current.closest<HTMLElement>(".math-frac");
   if (fraction) {
-    if (direction === "up" && current.classList.contains("math-frac-denominator")) {
-      return fraction.querySelector<HTMLElement>(".math-frac-numerator") ?? undefined;
+    const inNumerator = current.closest(".math-frac-numerator");
+    const inDenominator = current.closest(".math-frac-denominator");
+
+    if (direction === "up" && inDenominator) {
+      return firstLeaf(fraction.querySelector<HTMLElement>(".math-frac-numerator"), "end");
     }
 
-    if (direction === "down" && current.classList.contains("math-frac-numerator")) {
-      return fraction.querySelector<HTMLElement>(".math-frac-denominator") ?? undefined;
+    if (direction === "down" && inNumerator) {
+      return firstLeaf(fraction.querySelector<HTMLElement>(".math-frac-denominator"), "start");
     }
   }
 
@@ -244,135 +219,81 @@ function verticalTarget(current: HTMLElement, direction: "up" | "down"): HTMLEle
   if (script) {
     if (direction === "up") {
       return (
-        script.querySelector<HTMLElement>(".math-script-sup") ??
-        script.querySelector<HTMLElement>(".math-script-base") ??
-        undefined
+        firstLeaf(script.querySelector<HTMLElement>(".math-script-sup"), "end") ??
+        firstLeaf(script.querySelector<HTMLElement>(".math-script-base"), "end")
       );
     }
 
     return (
-      script.querySelector<HTMLElement>(".math-script-sub") ??
-      script.querySelector<HTMLElement>(".math-script-base") ??
-      undefined
+      firstLeaf(script.querySelector<HTMLElement>(".math-script-sub"), "start") ??
+      firstLeaf(script.querySelector<HTMLElement>(".math-script-base"), "start")
     );
   }
 
   const sqrt = current.closest<HTMLElement>(".math-sqrt");
   if (sqrt) {
-    if (direction === "up" && current.classList.contains("math-sqrt-body")) {
-      return sqrt.querySelector<HTMLElement>(".math-sqrt-index") ?? undefined;
+    if (direction === "up" && current.closest(".math-sqrt-body")) {
+      return firstLeaf(sqrt.querySelector<HTMLElement>(".math-sqrt-index"), "end");
     }
 
-    if (direction === "down" && current.classList.contains("math-sqrt-index")) {
-      return sqrt.querySelector<HTMLElement>(".math-sqrt-body") ?? undefined;
+    if (direction === "down" && current.closest(".math-sqrt-index")) {
+      return firstLeaf(sqrt.querySelector<HTMLElement>(".math-sqrt-body"), "start");
     }
   }
 
   const root = current.closest<HTMLElement>(".structured-math");
   if (!root) return undefined;
-
-  return closestSlotByGeometry(editableSlots(root), current, direction);
+  return closestLeafByGeometry(editableLeaves(root), current, direction);
 }
 
-function closestSlotByGeometry(slots: readonly HTMLElement[], current: HTMLElement, direction: "up" | "down"): HTMLElement | undefined {
+function closestLeafFromPoint(root: HTMLElement, x: number, y: number): HTMLElement | undefined {
+  return editableLeaves(root)
+    .map((leaf) => ({ leaf, score: pointDistance(leaf.getBoundingClientRect(), x, y) }))
+    .sort((a, b) => a.score - b.score)[0]?.leaf;
+}
+
+function closestLeafByGeometry(leaves: readonly HTMLElement[], current: HTMLElement, direction: "up" | "down"): HTMLElement | undefined {
   const currentBox = current.getBoundingClientRect();
   const currentX = currentBox.left + currentBox.width / 2;
-  const candidates = slots.filter((slot) => {
-    if (slot === current) return false;
-    const box = slot.getBoundingClientRect();
+  const candidates = leaves.filter((leaf) => {
+    if (leaf === current) return false;
+    const box = leaf.getBoundingClientRect();
     return direction === "up" ? box.bottom <= currentBox.top : box.top >= currentBox.bottom;
   });
 
   return candidates
-    .map((slot) => {
-      const box = slot.getBoundingClientRect();
-      const slotX = box.left + box.width / 2;
-      const slotY = direction === "up" ? box.bottom : box.top;
+    .map((leaf) => {
+      const box = leaf.getBoundingClientRect();
+      const leafX = box.left + box.width / 2;
+      const leafY = direction === "up" ? box.bottom : box.top;
       const currentY = direction === "up" ? currentBox.top : currentBox.bottom;
       return {
-        slot,
-        score: Math.abs(slotX - currentX) + Math.abs(slotY - currentY) * 1.6,
+        leaf,
+        score: Math.abs(leafX - currentX) + Math.abs(leafY - currentY) * 1.6,
       };
     })
-    .sort((a, b) => a.score - b.score)[0]?.slot;
+    .sort((a, b) => a.score - b.score)[0]?.leaf;
 }
 
-function editableSlots(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(".math-edit-slot"));
+function editableLeaves(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(".math-leaf"));
 }
 
-function focusSlot(slot: HTMLElement, edge: "start" | "end" = "end"): void {
-  slot.focus();
-  const selection = window.getSelection();
-  const range = document.createRange();
-  const textNode = slot.firstChild;
-  const offset = edge === "start" ? 0 : (textNode?.textContent?.length ?? 0);
-
-  range.setStart(textNode ?? slot, textNode ? offset : 0);
-  range.collapse(true);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
+function firstLeaf(root: HTMLElement | null, edge: CursorEdge): HTMLElement | undefined {
+  if (!root) return undefined;
+  const leaves = editableLeaves(root);
+  return edge === "start" ? leaves[0] : leaves.at(-1);
 }
 
-function caretAtBoundary(element: HTMLElement, boundary: "start" | "end"): boolean {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return true;
-
-  const range = selection.getRangeAt(0);
-  if (!element.contains(range.startContainer) || !range.collapsed) return false;
-
-  const offset = range.startOffset;
-  const textLength = element.textContent?.length ?? 0;
-  return boundary === "start" ? offset === 0 : offset >= textLength;
+function edgeFromPoint(leaf: HTMLElement, x: number): CursorEdge {
+  const box = leaf.getBoundingClientRect();
+  return x < box.left + box.width / 2 ? "start" : "end";
 }
 
-function syncSlotToRoot(root: HTMLElement, path: MathPath, text: string, options: StructuredMathViewOptions): void {
-  const current = getRootAst(root) ?? normalizeMathNode(options.node.attrs.mathAst) ?? emptyMath;
-  setRootAst(root, replaceAtPath(current, path, textToEditableMath(text)));
-}
-
-function commitRoot(element: HTMLElement, options: StructuredMathViewOptions): void {
-  const root = element.closest<HTMLElement>(".structured-math");
-  if (!root) return;
-
-  const elementPath = pathFromSlot(element);
-  if (elementPath) syncSlotToRoot(root, elementPath, element.textContent ?? "", options);
-
-  const active = document.activeElement;
-  if (active instanceof HTMLElement && active !== element && active.classList.contains("math-edit-slot")) {
-    const path = pathFromSlot(active);
-    if (path) syncSlotToRoot(root, path, active.textContent ?? "", options);
-  }
-
-  updateMathAst(getRootAst(root) ?? normalizeMathNode(options.node.attrs.mathAst) ?? emptyMath, options);
-}
-
-function updateMathAst(next: MathNode, options: StructuredMathViewOptions): void {
-  const pos = options.getPos();
-
-  if (pos === undefined) return;
-
-  const attrs = mathAttrsFromAst(next);
-  const tr = options.editor.state.tr.setNodeMarkup(pos, undefined, attrs);
-  options.editor.view.dispatch(tr);
-}
-
-function setRootAst(root: HTMLElement, ast: MathNode): void {
-  root.dataset.mathAst = JSON.stringify(ast);
-}
-
-function getRootAst(root: HTMLElement): MathNode | undefined {
-  try {
-    return normalizeMathNode(JSON.parse(root.dataset.mathAst ?? "null"));
-  } catch {
-    return undefined;
-  }
-}
-
-function pathFromSlot(slot: HTMLElement): MathPath | undefined {
-  if (!slot.classList.contains("math-edit-slot")) return undefined;
-  const path = slot.dataset.path ?? "";
-  return path ? path.split(".") : [];
+function pointDistance(box: DOMRect, x: number, y: number): number {
+  const dx = x < box.left ? box.left - x : x > box.right ? x - box.right : 0;
+  const dy = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+  return dx + dy;
 }
 
 function layoutStructuredMath(root: HTMLElement | null): void {

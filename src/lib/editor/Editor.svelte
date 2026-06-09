@@ -7,7 +7,6 @@
   import {
     cycleTextBeforeCursor,
     cycleSelectedMath,
-    focusSelectedMathSlot,
     insertBlockMath,
     insertInlineMath,
     insertMathTemplate,
@@ -90,20 +89,12 @@
     }
 
     if (event.key === "Tab") {
-      event.preventDefault();
-      const handled = focusSelectedMathSlot(editor, event.shiftKey ? "backward" : "forward") || cycleSelectedMath(editor) || cycleTextBeforeCursor(editor);
+      const handled = cycleSelectedMath(editor) || cycleTextBeforeCursor(editor);
       if (handled) {
+        event.preventDefault();
         emitDocumentChange();
       }
       return;
-    }
-
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-      const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? "backward" : "forward";
-      if (focusSelectedMathSlot(editor, direction)) {
-        event.preventDefault();
-        return;
-      }
     }
   }
 
@@ -221,6 +212,7 @@
     color: #fafaf7;
     font-family: KaTeX_Math, "Times New Roman", "Noto Serif CJK SC", serif;
     font-style: italic;
+    position: relative;
     white-space: nowrap;
     cursor: text;
   }
@@ -243,25 +235,43 @@
     gap: 0;
   }
 
-  .editor-wrapper :global(.math-edit-slot) {
+  .editor-wrapper :global(.math-struct-slot) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0.7em;
+  }
+
+  .editor-wrapper :global(.math-leaf) {
     display: inline-block;
     min-width: 0.45em;
     min-height: 1.1em;
     padding: 0;
     border-radius: 2px;
     outline: none;
-    caret-color: #ffffff;
     text-align: center;
   }
 
-  .editor-wrapper :global(.math-edit-slot:focus) {
+  .editor-wrapper :global(.math-symbol-leaf) {
+    min-width: 0.25em;
+  }
+
+  .editor-wrapper :global(.math-leaf--active) {
     background: rgb(154 188 178 / 18%);
     box-shadow: 0 0 0 1px rgb(154 188 178 / 75%);
   }
 
-  .editor-wrapper :global(.math-edit-slot:empty::before) {
+  .editor-wrapper :global(.math-leaf:empty::before) {
     content: attr(data-placeholder);
     color: rgb(255 255 255 / 38%);
+  }
+
+  .editor-wrapper :global(.math-cursor-overlay) {
+    position: absolute;
+    width: 1px;
+    background: #d84cff;
+    pointer-events: none;
+    z-index: 2;
   }
 
   .editor-wrapper :global(.math-frac) {

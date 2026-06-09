@@ -53,7 +53,7 @@ const StructuredInlineMath = InlineMath.extend({
       stopEvent: (event: Event) => {
         if (!(event.target instanceof HTMLElement)) return false;
         if (!event.target.closest(".structured-math")) return false;
-        return event.type === "keydown" || event.target.closest(".math-edit-slot") !== null;
+        return event.type === "mousedown" || event.type === "keydown";
       },
     });
   },
@@ -82,7 +82,7 @@ const StructuredBlockMath = BlockMath.extend({
       stopEvent: (event: Event) => {
         if (!(event.target instanceof HTMLElement)) return false;
         if (!event.target.closest(".structured-math")) return false;
-        return event.type === "keydown" || event.target.closest(".math-edit-slot") !== null;
+        return event.type === "mousedown" || event.type === "keydown";
       },
     });
   },

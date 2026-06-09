@@ -123,24 +123,6 @@ export function cycleSelectedMath(editor: Editor): boolean {
   return true;
 }
 
-export function focusSelectedMathSlot(editor: Editor, direction: "forward" | "backward"): boolean {
-  const { state } = editor;
-  const selectedNode = state.selection.$from.nodeAfter;
-
-  if (!selectedNode || !["inlineMath", "blockMath"].includes(selectedNode.type.name)) {
-    return false;
-  }
-
-  const selectedMath = editor.view.dom.querySelector<HTMLElement>(".ProseMirror-selectednode.structured-math");
-  const slots = Array.from(selectedMath?.querySelectorAll<HTMLElement>(".math-edit-slot") ?? []);
-  const target = direction === "backward" ? slots.at(-1) : slots[0];
-
-  if (!target) return false;
-
-  focusEditableSlot(target, direction === "backward" ? "end" : "start");
-  return true;
-}
-
 export function cycleTextBeforeCursor(editor: Editor): boolean {
   const { state } = editor;
   const { from, to } = state.selection;
@@ -157,20 +139,6 @@ export function cycleTextBeforeCursor(editor: Editor): boolean {
     .run();
   insertInlineMathAst(editor, symbol(latex));
   return true;
-}
-
-function focusEditableSlot(slot: HTMLElement, edge: "start" | "end"): void {
-  slot.focus();
-
-  const selection = window.getSelection();
-  const range = document.createRange();
-  const textNode = slot.firstChild;
-  const offset = edge === "start" ? 0 : (textNode?.textContent?.length ?? 0);
-
-  range.setStart(textNode ?? slot, textNode ? offset : 0);
-  range.collapse(true);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
 }
 
 export function makeInitialContent(): JSONContent {
